@@ -8,12 +8,24 @@ const IMAGE_URL = "https://www.mensa-kl.de/mimg/";
 
 void main() => runApp(MyApp());
 
+/// Main Widget
 class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Welcome to Flutter',
+      title: 'Mensa-KL',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: Colors.lightGreen,
+        accentColor: Colors.greenAccent,
+
+        textTheme: TextTheme(
+          headline3: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          headline4: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          headline6: TextStyle(fontSize: 12)
+        ),
+      ),
       home: Scaffold(
         appBar: AppBar(
           title: Text("Mensa-KL"),
@@ -66,6 +78,8 @@ class _MealWidgetState extends State<MealWidget> {
               padding: EdgeInsets.all(16.0),
               itemBuilder: (context, index) {
                 var item = snapshot.data![index];
+                // this sometimes leads to a bug where the items are not listed under the correct dates
+                // possible fix with a custom separator?
                 if (_lastDate != item.date) {
                   _lastDate = item.date;
                   return Container(
@@ -73,7 +87,7 @@ class _MealWidgetState extends State<MealWidget> {
                       children: <Widget>[
                         Container(
                           alignment: Alignment.centerLeft,
-                          child: Text(convertDate(item.date)),
+                          child: Text(convertDate(item.date), style: Theme.of(context).textTheme.headline3,),
                         ),
                         buildMealWidget(item),
                       ],
@@ -96,37 +110,38 @@ class _MealWidgetState extends State<MealWidget> {
   Widget buildMealWidget(Meal meal) {
     return Container(
       padding: const EdgeInsets.all(8.0),
-      child: Row(
-        children: <Widget>[
-          Expanded(
+      child: GestureDetector(
+        onTap: () {
+          showMealDialog(context, meal);
+        },
+        child: Row(
+          children: <Widget>[
+            Expanded(
               child: Container(
                 alignment: Alignment.centerLeft,
-                child: CircleAvatar(
-                  backgroundColor: Colors.transparent,
-                  backgroundImage: getImage(meal.image),
-                  radius: 55,
-                ),
-      ),
-
-          ),
-          Expanded(
+                child: MealImage.defaultShadow(meal.image),
+              ),
+            ),
+            Expanded(
               child: Column(
                 children: <Widget>[
                   Text(meal.title,
-                    style: DefaultTextStyle.of(context).style.apply(fontSizeFactor: 1.3),
+                    style: Theme.of(context).textTheme.headline4,
                   ),
                   Container(
                       alignment: Alignment.bottomLeft,
-                      child: Text(meal.price + " €")),
+                      child: Text(meal.price + " €", style: Theme.of(context).textTheme.headline6,)),
                 ],
-          ),
-          ),
-        ],
+              ),
+            ),
+          ],
+        ),
       ),
+
     );
   }
 }
-
+/// TODO: Cache images
 ImageProvider getImage(String url) {
   if (url.isEmpty) {
     return NetworkImage("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Noun_Project_question_mark_icon_1101884_cc.svg/132px-Noun_Project_question_mark_icon_1101884_cc.svg.png");
@@ -135,12 +150,67 @@ ImageProvider getImage(String url) {
   }
 }
 
+/// Shows a dialog with the meals details
+showMealDialog(BuildContext context, Meal meal) {
+  showGeneralDialog(
+    barrierLabel: "Label",
+    barrierDismissible: true,
+    barrierColor: Colors.black45.withOpacity(0.5),
+    transitionDuration: Duration(milliseconds: 300),
+    context: context,
+    pageBuilder: (context, anim1, anim2) {
+      return Align(
+        alignment: Alignment.center,
+        child: Container(
+          height: 300,
+          child: SizedBox.expand(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    child: MealImage(meal.image, BoxShadow(blurRadius: 2, color: Colors.black, spreadRadius: 1)),
+                  ),
+
+                  Container(
+                    margin: const EdgeInsets.all(20),
+                    child: Text(meal.title, style: Theme.of(context).textTheme.headline3, textAlign: TextAlign.center,),
+                  ),
+                  Container(
+                      child: Text("Preis: " + meal.price + " €", style: Theme.of(context).textTheme.headline4, textAlign: TextAlign.center,)
+                  ),
+                  Container(
+                      child: Text("Ausgabe: " + meal.location, style: Theme.of(context).textTheme.headline4, textAlign: TextAlign.center,)
+                  ),
+                ],
+              ),
+          ),
+          margin: EdgeInsets.only(left: 12, right: 12),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(40),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (context, anim1, anim2, child) {
+      return SlideTransition(
+        position: Tween(begin: Offset(0, 1), end: Offset(0, 0)).animate(anim1),
+        child: child,
+      );
+    },
+  );
+}
+
+
+/// Fetch the meals asynchronous
 Future<List<Meal>> fetchMeals() async {
   final response = await http.get(Uri.parse("https://www.mensa-kl.de/api.php?date=all&format=json"));
 
   if (response.statusCode == 200) {
     Iterable l = jsonDecode(response.body);
-    print("Sending request!");
+    print(response.body);
     List<Meal> meals = List<Meal>.from(l.map((model) => Meal.fromJson(model)));
     return meals;
   } else {
@@ -148,10 +218,40 @@ Future<List<Meal>> fetchMeals() async {
   }
 }
 
-
+///  Convert string of the date from format "YYYY-MM-DD"" to "DD.MM.YYYY"
 String convertDate(String date) {
   List<String> s = date.split("-");
   return s[2] + "." + s[1] + "." + s[0];
+}
+/// Widget of the meals image
+class MealImage extends StatelessWidget {
+
+  final String icon;
+  final BoxShadow shadow;
+
+  MealImage(this.icon, this.shadow);
+
+  MealImage.defaultShadow(String icon) : this(icon, BoxShadow(blurRadius: 10, color: Colors.black, spreadRadius: 1));
+
+  @override
+  Widget build(BuildContext context) {
+    return Container (
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [shadow],
+      ),
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: CircleAvatar(
+          backgroundColor: Colors.transparent,
+          backgroundImage: getImage(icon),
+          radius: 55,
+        ),
+      ),
+
+    );
+  }
 }
 
 
